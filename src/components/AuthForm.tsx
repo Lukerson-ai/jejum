@@ -81,12 +81,14 @@ const AuthForm: React.FC<AuthFormProps> = ({ mode }) => {
         </form>
       </CardContent>
       <CardFooter className="flex justify-center pt-6">
-        <p className="text-sm text-muted-foreground">
-          {mode === 'login' ? 'Não tem uma conta?' : 'Já tem uma conta?'}
-          <Button variant="link" className="text-accent hover:text-accent/80" onClick={() => router.push(mode === 'login' ? '/signup' : '/login')}>
-            {mode === 'login' ? 'Crie uma agora' : 'Faça login'}
-          </Button>
-        </p>
+        {mode === 'signup' && (
+          <p className="text-sm text-muted-foreground">
+            Já tem uma conta?
+            <Button variant="link" className="text-accent hover:text-accent/80" onClick={() => router.push('/login')}>
+              Faça login
+            </Button>
+          </p>
+        )}
       </CardFooter>
     </Card>
   );
