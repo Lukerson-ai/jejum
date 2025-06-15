@@ -1,22 +1,21 @@
-
 // src/app/(main)/planejamento/page.tsx
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from '@/components/ui/button';
-import { Utensils, Sparkles, Loader2, AlertTriangle, History, CalendarDays } from "lucide-react";
+import { Utensils, Sparkles, Loader2, AlertTriangle, History, CalendarDays, Hourglass } from "lucide-react";
 import MealPlannerForm from '@/components/MealPlannerForm';
 import MealPlanDisplay from '@/components/MealPlanDisplay';
 import { useAuth } from '@/contexts/AuthContext';
 import { getUserProfile, type UserProfile } from '@/actions/userProfileActions';
 import { 
   createAIMealPlanRequest, 
-  processMealPlanRequestAction, 
   getAIMealPlanRequestHistory,
   countTodaysMealPlanRequests
+  // processMealPlanRequestAction, // Removido: não será chamado automaticamente
 } from '@/actions/mealPlanActions';
-import type { DailyMealPlan } from '@/ai/flows/generate-meal-plan-flow';
+import type { DailyMealPlan } from '@/ai/flows/generate-meal-plan-flow'; 
 import type { ClientAIMealPlanRequest, AIMealPlanRequest } from '@/actions/aiMealPlanRequestTypes';
 import { toClientAIMealPlanRequest } from '@/actions/aiMealPlanRequestTypes';
 import { useToast } from '@/hooks/use-toast';
@@ -34,7 +33,7 @@ export default function PlanejamentoPage() {
   const { currentUser } = useAuth();
   const { toast } = useToast();
   
-  const [isProcessingRequest, setIsProcessingRequest] = useState(false);
+  const [isProcessingRequest, setIsProcessingRequest] = useState(false); // Usado para o momento da criação da solicitação
   const [currentMealPlanRequest, setCurrentMealPlanRequest] = useState<ClientAIMealPlanRequest | null>(null);
   const [mealPlanHistory, setMealPlanHistory] = useState<ClientAIMealPlanRequest[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(true);
@@ -44,7 +43,7 @@ export default function PlanejamentoPage() {
   const [isFetchingProfile, setIsFetchingProfile] = useState(true);
   const [todaysRequestsCount, setTodaysRequestsCount] = useState(0);
   const [isLoadingCount, setIsLoadingCount] = useState(true);
-  const [isLoadingPlan, setIsLoadingPlan] = useState(false);
+  const [isLoadingPlan, setIsLoadingPlan] = useState(false); // Potencialmente usado se carregarmos um plano existente
 
   const fetchInitialData = useCallback(async () => {
     if (!currentUser) {
@@ -88,6 +87,7 @@ export default function PlanejamentoPage() {
 
   useEffect(() => {
     let unsubscribe: Unsubscribe | undefined;
+    // Listener para a solicitação ATUAL (se houver uma e estiver pendente/processando)
     if (currentUser && currentMealPlanRequest?.id && (currentMealPlanRequest.status === 'pending' || currentMealPlanRequest.status === 'processing')) {
       const requestDocRef = doc(db, 'ai_meal_plan_requests', currentMealPlanRequest.id);
       unsubscribe = onSnapshot(requestDocRef, (docSnap) => {
@@ -96,20 +96,20 @@ export default function PlanejamentoPage() {
            if (data && data.createdAt instanceof Timestamp && data.updatedAt instanceof Timestamp) {
             const firestoreData = data as Omit<AIMealPlanRequest, 'id'>;
             const clientData = toClientAIMealPlanRequest(docSnap.id, firestoreData);
-            setCurrentMealPlanRequest(clientData);
+            setCurrentMealPlanRequest(clientData); // Atualiza o estado da solicitação atual
 
             if (clientData.status === 'completed') {
               toast({ title: "Cardápio Gerado!", description: "Seu cardápio personalizado está pronto.", className: "bg-success text-success-foreground" });
-              fetchInitialData(); 
-              setShowForm(false);
-              setIsProcessingRequest(false);
+              fetchInitialData(); // Recarrega o histórico
+              setShowForm(false); // Esconde o formulário para mostrar o plano
+              // isProcessingRequest já deve ser false ou será tornado false pelo listener de 'completed'
               if (unsubscribe) unsubscribe();
             } else if (clientData.status === 'error') {
               toast({ title: "Erro ao Gerar Cardápio", description: clientData.error || "Ocorreu um erro no servidor.", variant: "destructive" });
-              fetchInitialData(); 
-              setIsProcessingRequest(false);
+              fetchInitialData(); // Recarrega o histórico
               if (unsubscribe) unsubscribe();
             }
+            // Se ainda 'pending' ou 'processing', o estado é atualizado, mas não há ação específica aqui.
           } else {
              console.warn("Meal plan request document data is malformed or missing Timestamps:", docSnap.id, JSON.stringify(data, null, 2));
           }
@@ -117,7 +117,6 @@ export default function PlanejamentoPage() {
           toast({ title: "Erro", description: "Solicitação de cardápio não encontrada.", variant: "destructive" });
           setCurrentMealPlanRequest(null);
           fetchInitialData();
-          setIsProcessingRequest(false);
           if (unsubscribe) unsubscribe();
         }
       }, (error) => {
@@ -125,7 +124,6 @@ export default function PlanejamentoPage() {
         toast({ title: "Erro de Conexão", description: "Não foi possível ouvir as atualizações do cardápio.", variant: "destructive" });
         setCurrentMealPlanRequest(prev => prev ? {...prev, status: 'error', error: 'Erro de conexão'} : null);
         fetchInitialData();
-        setIsProcessingRequest(false);
         if (unsubscribe) unsubscribe();
       });
     }
@@ -149,11 +147,12 @@ export default function PlanejamentoPage() {
       return;
     }
 
-    setIsProcessingRequest(true);
-    setCurrentMealPlanRequest(null);
+    setIsProcessingRequest(true); // Indica que a operação de criação está em andamento
+    setCurrentMealPlanRequest(null); // Limpa o cardápio anterior
     
     try {
       const requestId = await createAIMealPlanRequest(currentUser.uid, userProfile.mealPreferences, 3);
+      // Define a solicitação atual como pendente para que o listener possa pegá-la
       setCurrentMealPlanRequest({ 
         id: requestId,
         userId: currentUser.uid,
@@ -167,19 +166,20 @@ export default function PlanejamentoPage() {
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
-      toast({ title: "Solicitação Enviada!", description: "Seu cardápio está sendo processado..." });
+      toast({ title: "Solicitação Enviada!", description: "Seu pedido de cardápio está pendente e será processado." });
       
-      processMealPlanRequestAction(requestId, userProfile.mealPreferences, 3)
-        .catch(procError => {
-            console.error("Error triggering meal plan processing for requestId:", requestId, procError);
-        });
+      // NÃO chama processMealPlanRequestAction aqui
       
       setTodaysRequestsCount(prev => prev + 1);
+      fetchInitialData(); // Atualiza o histórico para mostrar a nova entrada pendente
+      setShowForm(false); // Esconde o formulário, mostra mensagem de pendente
 
     } catch (error: any) {
       console.error("Error creating AI meal plan request", error);
       toast({ title: "Erro na Solicitação", description: error.message || "Não foi possível solicitar o cardápio.", variant: "destructive" });
-      setIsProcessingRequest(false);
+      setCurrentMealPlanRequest(null);
+    } finally {
+      setIsProcessingRequest(false); // Finaliza o estado de "criando solicitação"
     }
   };
   
@@ -200,7 +200,7 @@ export default function PlanejamentoPage() {
   
   const handleEditPreferences = () => {
     setShowForm(true); 
-    setCurrentMealPlanRequest(null);
+    setCurrentMealPlanRequest(null); // Limpa o cardápio atual ao editar preferências
   };
 
   const canGenerate = !isLoadingCount && todaysRequestsCount < DAILY_MEAL_PLAN_LIMIT;
@@ -244,14 +244,14 @@ export default function PlanejamentoPage() {
             </CardTitle>
             <CardDescription>
               {showForm 
-                ? "Após salvar suas preferências, clique abaixo para gerar um cardápio."
-                : "Seu cardápio foi gerado. Você pode editar suas preferências para gerar um novo."}
+                ? "Após salvar suas preferências, clique abaixo para solicitar um cardápio."
+                : "Sua solicitação foi enviada ou um cardápio foi exibido. Você pode editar suas preferências para uma nova solicitação."}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {!showForm && (generatedMealPlan || currentMealPlanRequest?.status === 'error') && (
+            {(!showForm && (generatedMealPlan || currentMealPlanRequest?.status === 'error' || currentMealPlanRequest?.status === 'pending' || currentMealPlanRequest?.status === 'processing')) && (
                <Button onClick={handleEditPreferences} variant="outline" className="mb-4">
-                  Editar Preferências e Gerar Novo Cardápio
+                  Editar Preferências e Solicitar Novo Cardápio
               </Button>
             )}
             {showForm && (
@@ -261,29 +261,21 @@ export default function PlanejamentoPage() {
                 className="w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground"
               >
                 {isProcessingRequest ? ( <Loader2 className="mr-2 h-5 w-5 animate-spin" /> ) : ( <Sparkles className="mr-2 h-5 w-5" /> )}
-                {isProcessingRequest ? 'Processando...' : (currentMealPlanRequest && currentMealPlanRequest.status !== 'error' ? 'Gerar Novo Cardápio' : `Gerar Cardápio (${DAILY_MEAL_PLAN_LIMIT - todaysRequestsCount} restantes)`)}
+                {isProcessingRequest ? 'Enviando Solicitação...' : `Solicitar Cardápio (${DAILY_MEAL_PLAN_LIMIT - todaysRequestsCount} restantes)`}
               </Button>
             )}
              {!isLoadingPlan && showForm && userProfile?.mealPreferences && Object.values(userProfile.mealPreferences).every(val => !val) && (
                 <p className="text-sm text-destructive mt-2">
                   <AlertTriangle className="inline h-4 w-4 mr-1" />
-                  Preencha e salve suas preferências alimentares para habilitar a geração.
+                  Preencha e salve suas preferências alimentares para habilitar a solicitação.
                 </p>
              )}
              {!canGenerate && !isLoadingCount && (
                 <p className="text-sm text-destructive mt-2">
                   <AlertTriangle className="inline h-4 w-4 mr-1" />
-                  Você atingiu o limite de {DAILY_MEAL_PLAN_LIMIT} cardápios gerados hoje.
+                  Você atingiu o limite de {DAILY_MEAL_PLAN_LIMIT} cardápios solicitados hoje.
                 </p>
              )}
-            
-            {isProcessingRequest && currentMealPlanRequest?.status !== 'completed' && currentMealPlanRequest?.status !== 'error' && (
-              <div className="mt-6 flex flex-col items-center justify-center text-muted-foreground">
-                <Loader2 className="h-10 w-10 animate-spin text-primary mb-3" />
-                <p>Gerando seu cardápio personalizado com IA...</p>
-                <p className="text-xs">(Isso pode levar alguns instantes)</p>
-              </div>
-            )}
           </CardContent>
         </Card>
       )}
@@ -301,9 +293,36 @@ export default function PlanejamentoPage() {
           </CardContent>
         </Card>
       )}
+      
+      {/* Mensagem de Pendente / Processando */}
+      {currentMealPlanRequest && (currentMealPlanRequest.status === 'pending' || currentMealPlanRequest.status === 'processing') && !isProcessingRequest && (
+        <Card className="mt-8 shadow-lg bg-card">
+            <CardHeader>
+                <CardTitle className="text-xl font-headline flex items-center text-primary">
+                    <Hourglass className="mr-2 h-6 w-6" />
+                    Solicitação em Andamento
+                </CardTitle>
+            </CardHeader>
+            <CardContent className="flex flex-col items-center justify-center text-muted-foreground">
+                {currentMealPlanRequest.status === 'pending' ? (
+                    <>
+                        <p>Sua solicitação de cardápio está pendente.</p>
+                        <p className="text-xs">(Aguardando processamento)</p>
+                    </>
+                ) : ( // processing
+                    <>
+                        <Loader2 className="h-8 w-8 animate-spin text-primary mb-2" />
+                        <p>Seu cardápio está sendo processado pela IA...</p>
+                        <p className="text-xs">(Isso pode levar alguns instantes)</p>
+                    </>
+                )}
+            </CardContent>
+        </Card>
+      )}
+
 
       {!isProcessingRequest && generatedMealPlan && generatedMealPlan.length > 0 && (
-        <MealPlanDisplay mealPlan={generatedMealPlan} />
+        <MealPlanDisplay mealPlan={generatedMealPlan} asCard={true} />
       )}
       {!isProcessingRequest && currentMealPlanRequest?.status === 'completed' && (!generatedMealPlan || generatedMealPlan.length === 0) && (
          <Card className="mt-8 shadow-lg">
@@ -355,7 +374,11 @@ export default function PlanejamentoPage() {
                         {format(new Date(item.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
                       </p>
                        <Badge variant={getStatusBadgeVariant(item.status)} className="capitalize self-start sm:self-auto">
-                        {item.status}
+                        {item.status === 'pending' ? 'Pendente' :
+                         item.status === 'processing' ? 'Processando' :
+                         item.status === 'completed' ? 'Concluído' : 
+                         item.status // fallback para outros status, como 'error'
+                        }
                       </Badge>
                     </div>
                     <div className="text-xs text-muted-foreground space-y-0.5">
@@ -384,6 +407,11 @@ export default function PlanejamentoPage() {
                         </p>
                       </div>
                     )}
+                    {(item.status === 'pending' || item.status === 'processing') && !item.mealPlanOutput && !item.error && (
+                       <div className="mt-2 pt-2 border-t border-border/50">
+                        <p className="text-sm text-muted-foreground">Aguardando processamento pela IA...</p>
+                       </div>
+                    )}
                   </Card>
                 ))}
               </div>
@@ -396,3 +424,4 @@ export default function PlanejamentoPage() {
     </div>
   );
 }
+
