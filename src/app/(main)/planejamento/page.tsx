@@ -149,6 +149,7 @@ export default function PlanejamentoPage() {
     
     try {
       const requestId = await createAIMealPlanRequest(currentUser.uid, userProfile.mealPreferences, 3);
+      // Set current request to pending locally
       setCurrentMealPlanRequest({ 
         id: requestId,
         userId: currentUser.uid,
@@ -165,8 +166,8 @@ export default function PlanejamentoPage() {
       toast({ title: "Solicitação Enviada!", description: "Seu pedido de cardápio está pendente." });
       
       setTodaysRequestsCount(prev => prev + 1);
-      fetchInitialData(); 
-      setShowForm(false);
+      // fetchInitialData(); // Re-fetch all data including history and counts. This might be slightly delayed.
+      setShowForm(false); // Hide form, show pending/processing UI
 
     } catch (error: any) {
       console.error("Error creating AI meal plan request", error);
@@ -217,7 +218,6 @@ export default function PlanejamentoPage() {
         <p className="text-muted-foreground mt-2">
           Defina suas preferências para que a IA personalize um plano alimentar. 
           Você pode gerar até {DAILY_MEAL_PLAN_LIMIT} cardápios por dia.
-          {!isLoadingCount && ` (${DAILY_MEAL_PLAN_LIMIT - todaysRequestsCount} restantes hoje)`}
         </p>
       </header>
       
@@ -408,7 +408,7 @@ export default function PlanejamentoPage() {
                     )}
                     {(item.status === 'pending' || item.status === 'processing') && !item.mealPlanOutput && !item.error && (
                        <div className="mt-2 pt-2 border-t border-border/50">
-                        <p className="text-sm text-muted-foreground">Aguardando processamento pela IA...</p>
+                         <p className="text-sm text-muted-foreground">Aguardando processamento pela IA...</p>
                        </div>
                     )}
                   </Card>
